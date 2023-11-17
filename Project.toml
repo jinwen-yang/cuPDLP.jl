@@ -1,0 +1,4 @@
+name = "cuPDLP"
+uuid = "c7d20397-e023-4b92-94b3-0a19c120bb81"
+authors = ["jinwen-yang <jinwenyang999@gmail.com>"]
+version = "0.1.0"
