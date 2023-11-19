@@ -18,10 +18,8 @@ $ julia --project -e 'import Pkg; Pkg.instantiate()'
 
 ```shell
 $ julia --project scripts/solve.jl \
-    --instance_path=INSTANCE_PATH \
-    --output_directory=OUTPUT_DIRECTORY \ 
-    --tolerance=TOLERANCE \
-    --time_sec_limit=TIME_SEC_LIMIT
+--instance_path=INSTANCE_PATH --output_directory=OUTPUT_DIRECTORY \ 
+--tolerance=TOLERANCE --time_sec_limit=TIME_SEC_LIMIT
 ```
 
 ## Interpreting the output
