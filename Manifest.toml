@@ -2,7 +2,7 @@
 
 julia_version = "1.9.0"
 manifest_format = "2.0"
-project_hash = "60cb32ec55b3b2cb09c69c38a2d2fe59bb43aaa6"
+project_hash = "6104f1b38a30cc8cf978e5c183171790506fa6e3"
 
 [[deps.AbstractFFTs]]
 deps = ["LinearAlgebra"]
@@ -246,6 +246,12 @@ deps = ["Artifacts", "Preferences"]
 git-tree-sha1 = "7e5d6779a1e09a36db2a7b6cff50942a0a7d0fca"
 uuid = "692b3bcd-3c85-4b1f-b108-f13ce0eb3210"
 version = "1.5.0"
+
+[[deps.JSON3]]
+deps = ["Dates", "Mmap", "Parsers", "PrecompileTools", "StructTypes", "UUIDs"]
+git-tree-sha1 = "95220473901735a0f4df9d1ca5b171b568b2daa3"
+uuid = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+version = "1.13.2"
 
 [[deps.JuliaNVTXCallbacks_jll]]
 deps = ["Artifacts", "JLLWrappers", "Libdl", "Pkg"]

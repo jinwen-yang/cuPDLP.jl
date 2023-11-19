@@ -10,47 +10,13 @@ struct PdhgParameters
     l_inf_ruiz_iterations::Int
     l2_norm_rescaling::Bool
     pock_chambolle_alpha::Union{Float64,Nothing}
-    """
-    Used to bias the initial value of the primal/dual balancing parameter
-    primal_weight. Must be positive. See also
-    scale_invariant_initial_primal_weight.
-    """
     primal_importance::Float64
-    """
-    If true, computes the initial primal weight with a scale-invariant formula
-    biased by primal_importance; see select_initial_primal_weight() for more
-    details. If false, primal_importance itself is used as the initial primal
-    weight.
-    """
     scale_invariant_initial_primal_weight::Bool
-    """
-    If >= 4 a line of debugging info is printed during some iterations. If >= 2
-    some info is printed about the final solution.
-    """
     verbosity::Int64
-    """
-    Whether to record an IterationStats object. If false, only iteration stats
-    for the final (terminating) iteration are recorded.
-    """
     record_iteration_stats::Bool
-    """
-    Check for termination with this frequency (in iterations).
-    """
     termination_evaluation_frequency::Int32
-    """
-    The termination criteria for the algorithm.
-    """
     termination_criteria::TerminationCriteria
-    """
-    Parameters that control when the algorithm restarts and whether it resets
-    to the average or the current iterate. Also, controls the primal weight
-    updates.
-    """
     restart_params::RestartParameters
-    """
-    Parameters of the step size policy. There are three step size policies
-    implemented: Adaptive, Malitsky and Pock, and constant step size.
-    """
     step_size_policy_params::Union{
         AdaptiveStepsizeParams,
         ConstantStepsizeParams,
@@ -67,25 +33,10 @@ mutable struct CuPdhgSolverState
     solution_weighted_avg::CuSolutionWeightedAverage 
     step_size::Float64
     primal_weight::Float64
-    """
-    True only if the solver was unable to take a step in the previous
-    iterations because of numerical issues, and must terminate on the next step.
-    """
     numerical_error::Bool
-    """
-    Number of KKT passes so far.
-    """
     cumulative_kkt_passes::Float64
     total_number_iterations::Int64
-    """
-    Latest required_ratio. This field is only used with the adaptive step size.
-    The proof of Theorem 1 requires 1 >= required_ratio.
-    """
     required_ratio::Union{Float64,Nothing}
-    """
-    Ratio between the last two step sizes: step_size(n)/step_size(n-1).
-    It is only saved while using Malitsky and Pock linesearch.
-    """
     ratio_step_sizes::Union{Float64,Nothing}
 end
 
@@ -111,10 +62,6 @@ function define_norms(
 end
   
 
-
-"""
-Logging while the algorithm is running.
-"""
 function pdhg_specific_log(
     # problem::QuadraticProgrammingProblem,
     iteration::Int64,
@@ -146,11 +93,6 @@ function pdhg_specific_log(
     end
 end
 
-
-
-"""
-Logging for when the algorithm terminates.
-"""
 function pdhg_final_log(
     problem::QuadraticProgrammingProblem,
     avg_primal_solution::Vector{Float64},

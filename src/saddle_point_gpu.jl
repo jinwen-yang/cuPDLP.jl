@@ -1,9 +1,5 @@
 
 
-"""
-A solution computed by saddle point mirror prox or primal-dual hybrid
-gradient (PDHG).
-"""
 # on CPU, since this is the final output of the solver
 # require to transfer solutions from GPU to CPU
 struct SaddlePointOutput
@@ -62,12 +58,6 @@ function unscaled_saddle_point_output(
     )
 end
 
-##############################################
-### projections: already inline in kernels ###
-##############################################
-
-"""The weighted l2 norm"""
-# FirstOrderLp uses this heavily in computing local duality gap
 function weighted_norm(
     vec::CuVector{Float64},
     weights::Float64,
@@ -76,13 +66,6 @@ function weighted_norm(
     return sqrt(weights) * tmp
 end
 
-#############################################
-### compute_localized_duality_gap() moved ###
-#############################################
-
-####################################################
-### RestartInfo create_last_restart_info() moved ###
-####################################################
 
 
 ###################################################
@@ -234,9 +217,7 @@ function compute_average!(
 
 end
 
-####################
-### TODO restart ###
-####################
+
 mutable struct CuKKTrestart
     kkt_residual::Float64
 end
@@ -459,34 +440,8 @@ function should_do_adaptive_restart_kkt(
     return do_restart
 end
 
-#################################################################
-# should_do_localized_adaptive_restart() for ADAPTIVE_LOCALIZED #
-#################################################################
-  
-#####################################################################
-# should_do_distance_based_adaptive_restart() for ADAPTIVE_DISTANCE #
-#####################################################################
 
 
-
-"""
-This function decides whether to restart and performs the restart.
-
-# Inputs
-- `problem::CuLinearProgrammingProblem`
-- `solution_weighted_avg::SolutionWeightedAverage`
-- `current_primal_solution::AbstractVector`
-- `current_dual_solution::AbstractVector`
-- `last_restart_info::RestartInfo`
-- `iterations_completed::Int64`: The number of successful iterations completed
-   by the algoirthm (i.e., where the step is accepted).
-- `primal_norm_params::AbstractVector{Float64}`: The weights of the weighted l2
-- `verbosity::Int64`: The output level.
-- `restart_params::RestartParameters`: Parameters for making restart decisions.
-
-# Output
-A RestartChoice enum which tells us if a restart was performed. 
-"""
 function run_restart_scheme(
     problem::CuLinearProgrammingProblem,
     solution_weighted_avg::CuSolutionWeightedAverage,
@@ -632,15 +587,7 @@ function run_restart_scheme(
     end
 end
 
-"""
-# Inputs:
-- `last_restart_info::RestartInfo`
-- `primal_weight::Float64`
-- `primal_weight_update_smoothing::Float64`
-- `verbosity::Int64`: Output level.
-# Output:
-The new primal weight.
-"""
+
 function compute_new_primal_weight(
     last_restart_info::CuRestartInfo,
     primal_weight::Float64,
@@ -707,9 +654,6 @@ end
 
 
 #################################################
-"""
-A simple string name for a PointType.
-"""
 function point_type_label(point_type::PointType)
     if point_type == POINT_TYPE_CURRENT_ITERATE
         return "current"
@@ -722,9 +666,7 @@ function point_type_label(point_type::PointType)
     end
 end
 
-"""
-Logging for when the algorithm terminates.
-"""
+
 function generic_final_log(
     problem::QuadraticProgrammingProblem,
     current_primal_solution::Vector{Float64},
@@ -760,18 +702,6 @@ function generic_final_log(
                 convergence_information.corrected_dual_objective
             )
         end
-        # if haskey(method_specific_stats, "estimated_lower_bound") &&
-        # haskey(method_specific_stats, "estimated_upper_bound")
-        # Printf.@printf(
-        #     "Estimated optimal objective range: [%f, %f] \n",
-        #     method_specific_stats["estimated_lower_bound"],
-        #     method_specific_stats["estimated_upper_bound"],
-        # )
-        # end
-        # Printf.@printf(
-        # "Lagrangian value: %f \n",
-        # method_specific_stats["lagrangian_value"],
-        # )
     end
     if verbosity >= 4
         Printf.@printf(
@@ -793,13 +723,6 @@ function generic_final_log(
     end
 end
 
-##########################################
-### update_objective_bound_estimates() ###
-### compute lagrangian and estimated_lower/upper_bound ###
-### only used in log ###
-##########################################
-
-
 function select_initial_primal_weight(
     problem::CuLinearProgrammingProblem,#QuadraticProgrammingProblem,
     primal_norm_params::Float64,
@@ -819,12 +742,4 @@ function select_initial_primal_weight(
     end
     return primal_weight
 end
-
-######################################
-### compute_primal/dual_gradient() ###
-######################################
-
-##################################
-### compute_lagrangian_value() ###
-##################################
 

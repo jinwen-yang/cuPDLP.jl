@@ -1,9 +1,4 @@
 
-
-########################################################
-### max_primal_violation(), used in pdhg_final_log() ###
-########################################################
-
 mutable struct CuDualStats
     dual_objective::Float64
     dual_residual::CuVector{Float64}
@@ -89,9 +84,6 @@ function compute_primal_residual!(
     )
 end
         
-
-""" Computes the primal objective.
-"""
 function primal_obj(
     problem::CuLinearProgrammingProblem,
     primal_solution::CuVector{Float64},
@@ -123,11 +115,6 @@ function reduced_costs_dual_objective_contribution_kernel!(
     return 
 end
 
-
-"""
-This function returns the contribution of the
-reduced costs to the dual objective value.
-"""
 function reduced_costs_dual_objective_contribution(
     problem::CuLinearProgrammingProblem,
     buffer_kkt::BufferKKTState,
@@ -231,10 +218,7 @@ function corrected_dual_obj(buffer_kkt::BufferKKTState)
     end
 end
 
-"""
-Returns a `ConvergenceInformation` object given a `CuLinearProgrammingProblem`
-with given primal and dual vectors.
-"""
+
 function compute_convergence_information(
     problem::CuLinearProgrammingProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -246,10 +230,7 @@ function compute_convergence_information(
     primal_gradient::CuVector{Float64},
     buffer_kkt::BufferKKTState,
 )
-    # num_constraints, num_vars = problem.num_constraints, problem.num_variables
-    # @assert length(primal_iterate) == num_vars
-    # @assert length(dual_iterate) == num_constraints
-
+    
     ## construct buffer_kkt
     buffer_kkt.primal_solution .= copy(primal_iterate)
     buffer_kkt.dual_solution .= copy(dual_iterate)
@@ -298,11 +279,7 @@ function compute_convergence_information(
     return convergence_info
 end
 
-"""
-Returns an `InfeasibilityInformation` object given a
-`QuadraticProgrammingProblem` and estimates for the primal and dual rays.
-The rays do not need to be pre-scaled to have Inf-norm equal to 1.0.
-"""
+
 function compute_infeasibility_information(
     problem::CuLinearProgrammingProblem,
     primal_ray_estimate::CuVector{Float64},
@@ -349,8 +326,7 @@ function compute_infeasibility_information(
     infeas_info.max_primal_ray_infeasibility = CUDA.norm([buffer_kkt_infeas.constraint_violation; buffer_kkt_infeas.lower_variable_violation; buffer_kkt_infeas.upper_variable_violation], Inf)
     infeas_info.primal_ray_linear_objective =
         CUDA.dot(problem.objective_vector, buffer_kkt_infeas.primal_solution)
-    # infeas_info.primal_ray_quadratic_norm = 0.0 # remove
-
+    
 
     buffer_lp.variable_lower_bound .= copy(problem.variable_lower_bound)
     buffer_lp.variable_upper_bound .= copy(problem.variable_upper_bound)
@@ -398,11 +374,7 @@ function compute_infeasibility_information(
     return infeas_info
 end
 
-"""
-Returns a `IterationStats` object given a `QuadraticProgrammingProblem`,
-primal and dual vectors, estimates for primal and dual rays, and other
-iteration statistics corresponding to the fields in the struct.
-"""
+
 function compute_iteration_stats(
     problem::CuLinearProgrammingProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -470,11 +442,7 @@ mutable struct BufferOriginalSol
     original_primal_gradient::CuVector{Float64}
 end
 
-"""
-This code computes the unscaled iteration stats.
-The input iterates to this function have been scaled according to
-scaled_problem.
-"""
+
 function evaluate_unscaled_iteration_stats(
     scaled_problem::CuScaledQpProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -533,12 +501,6 @@ function evaluate_unscaled_iteration_stats(
 end
 
 # print functions are on CPU
-"""
-   print_to_screen_this_iteration(termination_reason, iteration, verbosity,
-      termination_evaluation_frequency)
-
-Decides if we should print iteration stats to screen this iteration.
-"""
 function print_to_screen_this_iteration(
     termination_reason::Union{TerminationReason,Bool},
     iteration::Int64,
@@ -572,13 +534,7 @@ function print_to_screen_this_iteration(
     end
 end
 
-"""
-  display_iteration_stats_heading(show_infeasibility)
 
-The heading for the iteration stats table. If show_infeasibility is true then
-an extended table is printed that includes infeasibility information. See
-README.md for documentation on what each heading means.
-"""
 function display_iteration_stats_heading(show_infeasibility::Bool)
     Printf.@printf(
         "%s | %s | %s | %s |",
@@ -629,17 +585,10 @@ function display_iteration_stats_heading(verbosity::Int64)
     end
 end
 
-"""
-Make sure that a float is of a constant length, irrespective if it is negative
-or positive.
-"""
 function lpad_float(number::Float64)
     return lpad(Printf.@sprintf("%.1e", number), 8)
 end
 
-"""
-Displays a row of the iteration stats table.
-"""
 function display_iteration_stats(
     stats::IterationStats,
     show_infeasibility::Bool,
