@@ -1,7 +1,5 @@
 
 
-# on CPU, since this is the final output of the solver
-# require to transfer solutions from GPU to CPU
 struct SaddlePointOutput
     """
     The output primal solution vector.
@@ -35,6 +33,10 @@ struct SaddlePointOutput
     iteration_stats::Vector{IterationStats}
 end
 
+
+"""
+Return the unscaled primal and dual solutions
+"""
 function unscaled_saddle_point_output(
     scaled_problem::ScaledQpProblem,
     primal_solution::AbstractVector{Float64},
@@ -66,9 +68,6 @@ function weighted_norm(
     return sqrt(weights) * tmp
 end
 
-
-
-###################################################
 mutable struct CuSolutionWeightedAverage
     sum_primal_solutions::CuVector{Float64}
     sum_dual_solutions::CuVector{Float64}
@@ -86,7 +85,10 @@ mutable struct CuBufferAvgState
     avg_primal_product::CuVector{Float64}
     avg_primal_gradient::CuVector{Float64}
 end
-  
+
+"""
+Initialize weighted average
+"""
 function initialize_solution_weighted_average(
     primal_size::Int64,
     dual_size::Int64,
@@ -103,6 +105,9 @@ function initialize_solution_weighted_average(
     )
 end
 
+"""
+Reset weighted average
+"""
 function reset_solution_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
 )
@@ -120,6 +125,9 @@ function reset_solution_weighted_average!(
     return
 end
 
+"""
+Update weighted average of primal solution
+"""
 function add_to_primal_solution_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     current_primal_solution::CuVector{Float64},
@@ -133,6 +141,9 @@ function add_to_primal_solution_weighted_average!(
     return
 end
 
+"""
+Update weighted average of dual solution
+"""
 function add_to_dual_solution_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     current_dual_solution::CuVector{Float64},
@@ -145,6 +156,9 @@ function add_to_dual_solution_weighted_average!(
     return
 end
 
+"""
+Update weighted average of primal product
+"""
 function add_to_primal_product_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     current_primal_product::CuVector{Float64},
@@ -156,6 +170,9 @@ function add_to_primal_product_weighted_average!(
     return
 end
 
+"""
+Update weighted average of dual product
+"""
 function add_to_dual_product_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     current_dual_product::CuVector{Float64},
@@ -168,7 +185,9 @@ function add_to_dual_product_weighted_average!(
 end
 
 
-
+"""
+Update weighted average
+"""
 function add_to_solution_weighted_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     current_primal_solution::CuVector{Float64},
@@ -201,6 +220,9 @@ function add_to_solution_weighted_average!(
     return
 end
 
+"""
+Compute average solutions
+"""
 function compute_average!(
     solution_weighted_avg::CuSolutionWeightedAverage,
     buffer_avg::CuBufferAvgState,
@@ -222,8 +244,9 @@ mutable struct CuKKTrestart
     kkt_residual::Float64
 end
 
-# compute weighted kkt residual of the scaled problem
-# return CuKKTrestart
+"""
+Compute weighted KKT residual for restarting
+"""
 function compute_weight_kkt_residual(
     problem::CuLinearProgrammingProblem,
     primal_iterate::CuVector{Float64},
@@ -250,8 +273,6 @@ function compute_weight_kkt_residual(
     l2_dual_residual = CUDA.norm([buffer_kkt.dual_stats.dual_residual; buffer_kkt.reduced_costs_violation], 2)
 
     weighted_kkt_residual = sqrt(primal_weight * l2_primal_residual^2 + 1/primal_weight * l2_dual_residual^2 + abs(primal_objective - dual_objective)^2)
-    # weighted_kkt_residual = sqrt(primal_norm_params * l2_primal_residual^2 + dual_norm_params * l2_dual_residual^2 + (primal_objective - dual_objective)^2)
-    # weighted_kkt_residual = sqrt(l2_primal_residual^2 + l2_dual_residual^2 + abs(primal_objective - dual_objective)^2)
 
     return CuKKTrestart(weighted_kkt_residual)
 end
@@ -290,6 +311,9 @@ mutable struct CuRestartInfo
     primal_gradient::CuVector{Float64}
 end
 
+"""
+Initialize last restart info
+"""
 function create_last_restart_info(
     problem::CuLinearProgrammingProblem,
     primal_solution::CuVector{Float64},
@@ -358,6 +382,9 @@ mutable struct RestartParameters
     primal_weight_update_smoothing::Float64
 end
 
+"""
+Construct restart parameters
+"""
 function construct_restart_parameters(
     restart_scheme::RestartScheme,
     restart_to_current_metric::RestartToCurrentMetric,
@@ -386,6 +413,9 @@ function construct_restart_parameters(
     )
 end
 
+"""
+Check if restart at average solutions
+"""
 function should_reset_to_average(
     current::CuKKTrestart,
     average::CuKKTrestart,
@@ -398,7 +428,9 @@ function should_reset_to_average(
     end
 end
 
-
+"""
+Check restart criteria based on weighted KKT
+"""
 function should_do_adaptive_restart_kkt(
     problem::CuLinearProgrammingProblem,
     candidate_kkt::CuKKTrestart, 
@@ -441,7 +473,9 @@ function should_do_adaptive_restart_kkt(
 end
 
 
-
+"""
+Check restart
+"""
 function run_restart_scheme(
     problem::CuLinearProgrammingProblem,
     solution_weighted_avg::CuSolutionWeightedAverage,
@@ -587,7 +621,9 @@ function run_restart_scheme(
     end
 end
 
-
+"""
+Compute primal weight at restart
+"""
 function compute_new_primal_weight(
     last_restart_info::CuRestartInfo,
     primal_weight::Float64,
@@ -617,6 +653,9 @@ function compute_new_primal_weight(
     end
 end
 
+"""
+Update last restart info
+"""
 function update_last_restart_info!(
     last_restart_info::CuRestartInfo,
     current_primal_solution::CuVector{Float64},
@@ -653,7 +692,6 @@ function update_last_restart_info!(
 end
 
 
-#################################################
 function point_type_label(point_type::PointType)
     if point_type == POINT_TYPE_CURRENT_ITERATE
         return "current"
@@ -723,8 +761,11 @@ function generic_final_log(
     end
 end
 
+"""
+Initialize primal weight
+"""
 function select_initial_primal_weight(
-    problem::CuLinearProgrammingProblem,#QuadraticProgrammingProblem,
+    problem::CuLinearProgrammingProblem,
     primal_norm_params::Float64,
     dual_norm_params::Float64,
     primal_importance::Float64,

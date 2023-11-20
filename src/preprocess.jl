@@ -1,3 +1,7 @@
+######################################################
+# preprocess.jl utilizes the code of FirstOrderLp.jl #
+######################################################
+
 """
 Check that the QuadraticProgrammingProblem is valid.
 """

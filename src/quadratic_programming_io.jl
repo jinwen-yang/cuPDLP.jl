@@ -1,3 +1,7 @@
+####################################################################
+# quadratic_programming_io.jl utilizes the code of FirstOrderLp.jl #
+####################################################################
+
 mutable struct TwoSidedQpProblem
     "Lower bounds on the variables."
     variable_lower_bound::Vector{Float64}

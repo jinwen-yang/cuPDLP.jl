@@ -17,9 +17,6 @@ using CUDA
 const Diagonal = LinearAlgebra.Diagonal
 const diag = LinearAlgebra.diag
 const dot = LinearAlgebra.dot
-const cholesky = LinearAlgebra.cholesky
-const ldlt = LinearAlgebra.ldlt
-const lu = LinearAlgebra.lu
 const norm = LinearAlgebra.norm
 const mean = Statistics.mean
 const median = Statistics.median

@@ -1,3 +1,8 @@
+#################################################################
+# quadratic_programming.jl utilizes the code of FirstOrderLp.jl #
+#################################################################
+
+
 """
 A QuadraticProgrammingProblem struct specifies a quadratic programming problem
 with the following format:

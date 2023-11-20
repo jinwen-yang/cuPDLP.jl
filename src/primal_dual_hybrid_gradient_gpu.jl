@@ -177,7 +177,9 @@ function estimate_maximum_singular_value(
     number_of_power_iterations
 end
 
-
+"""
+Kernel to compute primal solution in the next iteration
+"""
 function compute_next_primal_solution_kernel!(
     objective_vector::CuDeviceVector{Float64},
     variable_lower_bound::CuDeviceVector{Float64},
@@ -199,6 +201,9 @@ function compute_next_primal_solution_kernel!(
     return 
 end
 
+"""
+Compute primal solution in the next iteration
+"""
 function compute_next_primal_solution!(
     problem::CuLinearProgrammingProblem,
     current_primal_solution::CuVector{Float64},
@@ -227,6 +232,9 @@ function compute_next_primal_solution!(
     
 end
 
+"""
+Kernel to compute dual solution in the next iteration
+"""
 function compute_next_dual_solution_kernel!(
     right_hand_side::CuDeviceVector{Float64},
     current_dual_solution::CuDeviceVector{Float64},
@@ -253,6 +261,9 @@ function compute_next_dual_solution_kernel!(
     return 
 end
 
+"""
+Compute dual solution in the next iteration
+"""
 function compute_next_dual_solution!(
     problem::CuLinearProgrammingProblem,
     current_dual_solution::CuVector{Float64},
@@ -283,11 +294,13 @@ function compute_next_dual_solution!(
     CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix_t, next_dual, 0, next_dual_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
 end
 
+"""
+Update primal and dual solutions
+"""
 function update_solution_in_solver_state!(
     solver_state::CuPdhgSolverState,
     buffer_state::CuBufferState,
 )
-    # Doing the following updates in previous kernels is inefficient because in AdaptiveStepsize multiple next_variables are computed
     solver_state.delta_primal .= buffer_state.next_primal .- solver_state.current_primal_solution
     solver_state.delta_dual .= buffer_state.next_dual .- solver_state.current_dual_solution
     # solver_state.delta_dual_product .= buffer_state.next_dual_product .- solver_state.current_dual_product
@@ -308,6 +321,9 @@ function update_solution_in_solver_state!(
     )
 end
 
+"""
+Compute iteraction and movement for AdaptiveStepsize
+"""
 function compute_interaction_and_movement(
     solver_state::CuPdhgSolverState,
     problem::CuLinearProgrammingProblem,
@@ -328,6 +344,9 @@ function compute_interaction_and_movement(
     return interaction, movement
 end
 
+"""
+Take PDHG step with AdaptiveStepsize
+"""
 function take_step!(
     step_params::AdaptiveStepsizeParams,
     problem::CuLinearProgrammingProblem,
@@ -336,10 +355,8 @@ function take_step!(
 )
     step_size = solver_state.step_size
     done = false
-    # iter = 0
 
     while !done
-        # iter += 1
         solver_state.total_number_iterations += 1
 
         compute_next_primal_solution!(
@@ -372,13 +389,6 @@ function take_step!(
 
         solver_state.cumulative_kkt_passes += 1
 
-        # if movement == 0.0
-        #     # The algorithm will terminate at the beginning of the next iteration
-        #     solver_state.numerical_error = true
-        #     break
-        # end
-
-        # The proof of Theorem 1 requires movement / step_size >= interaction.
         if interaction > 0
             step_size_limit = movement / interaction
             if movement == 0.0
@@ -409,6 +419,9 @@ function take_step!(
     solver_state.step_size = step_size
 end
 
+"""
+Take PDHG step with ConstantStepsize
+"""
 function take_step!(
     step_params::ConstantStepsizeParams,
     problem::CuLinearProgrammingProblem,
@@ -445,7 +458,9 @@ function take_step!(
     )
 end
 
-
+"""
+Main algorithm: given parameters and LP problem, return solutions
+"""
 function optimize(
     params::PdhgParameters,
     original_problem::QuadraticProgrammingProblem,
@@ -558,9 +573,6 @@ function optimize(
     if params.step_size_policy_params isa AdaptiveStepsizeParams
         solver_state.cumulative_kkt_passes += 0.5
         solver_state.step_size = 1.0 / norm(scaled_problem.scaled_qp.constraint_matrix, Inf)
-    # elseif params.step_size_policy_params isa MalitskyPockStepsizeParameters
-    #     solver_state.cumulative_kkt_passes += 0.5
-    #     solver_state.step_size = 1.0 / norm(scaled_problem.scaled_qp.constraint_matrix, Inf)
     else
         desired_relative_error = 0.2
         maximum_singular_value, number_of_power_iterations =
@@ -628,7 +640,7 @@ function optimize(
                 buffer_avg.avg_primal_solution .= copy(solver_state.current_primal_solution)
                 buffer_avg.avg_dual_solution .= copy(solver_state.current_dual_solution)
                 buffer_avg.avg_primal_product .= copy(solver_state.current_primal_product)
-                buffer_avg.avg_primal_gradient .= copy(buffer_primal_gradient) #d_problem.objective_vector .- solver_state.current_dual_product    
+                buffer_avg.avg_primal_gradient .= copy(buffer_primal_gradient) 
             else
                 compute_average!(solver_state.solution_weighted_avg, buffer_avg, d_problem)
             end
@@ -666,9 +678,6 @@ function optimize(
                 solver_state.step_size,
                 solver_state.primal_weight,
             )
-
-            # update_objective_bound_estimates() #
-
             
             ### check termination criteria ###
             termination_reason = check_termination_criteria(
@@ -700,7 +709,7 @@ function optimize(
                 # ** Terminate the algorithm **
                 # This is the only place the algorithm can terminate. Please keep it this way.
                 
-                # transfer solution to CPU
+                # GPU to CPU
                 avg_primal_solution = zeros(primal_size)
                 avg_dual_solution = zeros(dual_size)
                 gpu_to_cpu!(
@@ -761,16 +770,10 @@ function optimize(
                 )
                 solver_state.ratio_step_sizes = 1.0
             end
-            # if current_iteration_stats.restart_used == RESTART_CHOICE_RESTART_TO_AVERAGE
-            #     solver_state.current_primal_product .= solver_state.solution_weighted_avg.sum_primal_product ./ solver_state.solution_weighted_avg.sum_primal_solution_weights
-
-            #     solver_state.current_dual_product .= solver_state.solution_weighted_avg.sum_dual_product ./ solver_state.solution_weighted_avg.sum_dual_solution_weights
-            # end
         end
 
         time_spent_doing_basic_algorithm_checkpoint = time()
       
-        ### no dual_objective
         if params.verbosity >= 6 && print_to_screen_this_iteration(
             false, # termination_reason
             iteration,

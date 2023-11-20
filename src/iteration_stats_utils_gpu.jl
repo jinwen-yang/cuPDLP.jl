@@ -20,6 +20,9 @@ mutable struct BufferKKTState
 end
 
 
+"""
+Kernel to compute the violation of primal constraints
+"""
 function compute_primal_residual_constraint_kernel!(
     activities::CuDeviceVector{Float64},
     right_hand_side::CuDeviceVector{Float64},
@@ -41,6 +44,9 @@ function compute_primal_residual_constraint_kernel!(
     return 
 end
 
+"""
+Kernel to compute the violation of primal variable bound
+"""
 function compute_primal_residual_variable_kernel!(
     primal_vec::CuDeviceVector{Float64},
     variable_lower_bound::CuDeviceVector{Float64},
@@ -59,6 +65,9 @@ function compute_primal_residual_variable_kernel!(
     return 
 end
 
+"""
+Compute primal residual
+"""
 function compute_primal_residual!(
     problem::CuLinearProgrammingProblem,
     buffer_kkt::BufferKKTState,
@@ -83,7 +92,10 @@ function compute_primal_residual!(
         buffer_kkt.constraint_violation,
     )
 end
-        
+      
+"""
+Compute primal objective
+"""
 function primal_obj(
     problem::CuLinearProgrammingProblem,
     primal_solution::CuVector{Float64},
@@ -92,7 +104,9 @@ function primal_obj(
         CUDA.dot(problem.objective_vector, primal_solution)
 end
 
-
+"""
+Kernel to compute the contribution of reduced costs to dual objective
+"""
 function reduced_costs_dual_objective_contribution_kernel!(
     variable_lower_bound::CuDeviceVector{Float64},
     variable_upper_bound::CuDeviceVector{Float64},
@@ -115,6 +129,9 @@ function reduced_costs_dual_objective_contribution_kernel!(
     return 
 end
 
+"""
+Compute the contribution of reduced costs to dual objective
+"""
 function reduced_costs_dual_objective_contribution(
     problem::CuLinearProgrammingProblem,
     buffer_kkt::BufferKKTState,
@@ -134,6 +151,9 @@ function reduced_costs_dual_objective_contribution(
     return dual_objective_contribution
 end
 
+"""
+Kernel to compute the reduced costs from primal gradient
+"""
 function compute_reduced_costs_from_primal_gradient_kernel!(
     primal_gradient::CuDeviceVector{Float64},
     isfinite_variable_lower_bound::CuDeviceVector{Bool},
@@ -153,6 +173,9 @@ function compute_reduced_costs_from_primal_gradient_kernel!(
     return 
 end
 
+"""
+Compute reduced costs from primal gradient
+"""
 function compute_reduced_costs_from_primal_gradient!(
     problem::CuLinearProgrammingProblem,
     buffer_kkt::BufferKKTState,
@@ -169,7 +192,9 @@ function compute_reduced_costs_from_primal_gradient!(
     )  
 end
 
-
+"""
+Kernel to compute the dual residual
+"""
 function compute_dual_residual_kernel!(
     dual_solution::CuDeviceVector{Float64},
     num_equalities::Int64,
@@ -185,7 +210,9 @@ function compute_dual_residual_kernel!(
     return 
 end
 
-
+"""
+Compute the dual residual and dual objective
+"""
 function compute_dual_stats!(
     problem::CuLinearProgrammingProblem,
     buffer_kkt::BufferKKTState,
@@ -218,7 +245,9 @@ function corrected_dual_obj(buffer_kkt::BufferKKTState)
     end
 end
 
-
+"""
+Compute convergence information of the given primal and dual solutions
+"""
 function compute_convergence_information(
     problem::CuLinearProgrammingProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -279,7 +308,9 @@ function compute_convergence_information(
     return convergence_info
 end
 
-
+"""
+Compute infeasibility information of the given primal and dual solutions
+"""
 function compute_infeasibility_information(
     problem::CuLinearProgrammingProblem,
     primal_ray_estimate::CuVector{Float64},
@@ -305,22 +336,6 @@ function compute_infeasibility_information(
     buffer_lp.variable_upper_bound .= 1 ./ problem.isfinite_variable_upper_bound .- 1
     buffer_lp.objective_vector .= copy(problem.objective_vector)
     buffer_lp.right_hand_side .= 0.0
-    
-    # 
-    # homogeneous_primal = CuLinearProgrammingProblem(
-    #     problem.num_variables,
-    #     problem.num_constraints,
-    #     -1 ./ problem.isfinite_variable_lower_bound .+ 1,
-    #     1 ./ problem.isfinite_variable_upper_bound .- 1,
-    #     problem.isfinite_variable_lower_bound,
-    #     problem.isfinite_variable_upper_bound,
-    #     problem.objective_vector,
-    #     0.0,
-    #     problem.constraint_matrix,
-    #     problem.constraint_matrix_t,
-    #     CUDA.zeros(Float64, problem.num_constraints),
-    #     problem.num_equalities,
-    # )
 
     compute_primal_residual!(buffer_lp, buffer_kkt_infeas)
     infeas_info.max_primal_ray_infeasibility = CUDA.norm([buffer_kkt_infeas.constraint_violation; buffer_kkt_infeas.lower_variable_violation; buffer_kkt_infeas.upper_variable_violation], Inf)
@@ -333,25 +348,8 @@ function compute_infeasibility_information(
     buffer_lp.objective_vector .= 0.0
     buffer_lp.right_hand_side .= copy(problem.right_hand_side)
 
-    # 
-    # homogeneous_dual = CuLinearProgrammingProblem(
-    #     problem.num_variables,
-    #     problem.num_constraints,
-    #     problem.variable_lower_bound,
-    #     problem.variable_upper_bound,
-    #     problem.isfinite_variable_lower_bound,
-    #     problem.isfinite_variable_upper_bound,
-    #     CUDA.zeros(Float64, problem.num_variables),
-    #     0.0,
-    #     problem.constraint_matrix,
-    #     problem.constraint_matrix_t,
-    #     problem.right_hand_side,
-    #     problem.num_equalities,
-    # )
-
     buffer_kkt_infeas.dual_solution .= copy(dual_ray_estimate)
     buffer_kkt_infeas.primal_gradient .= primal_ray_estimate_gradient .- problem.objective_vector
-    # copy(primal_ray_estimate_gradient)
 
     compute_dual_stats!(buffer_lp, buffer_kkt_infeas)
 
@@ -361,7 +359,6 @@ function compute_infeasibility_information(
     )
     if !iszero(scaling_factor)
         infeas_info.max_dual_ray_infeasibility = buffer_kkt_infeas.dual_res_inf / scaling_factor
-        # norm([buffer_kkt_infeas.dual_stats.dual_residual; buffer_kkt_infeas.reduced_costs_violation], Inf) / scaling_factor
         infeas_info.dual_ray_objective =
         buffer_kkt_infeas.dual_stats.dual_objective / scaling_factor
     else
@@ -374,7 +371,9 @@ function compute_infeasibility_information(
     return infeas_info
 end
 
-
+"""
+Compute iteration stats of the given primal and dual solutions
+"""
 function compute_iteration_stats(
     problem::CuLinearProgrammingProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -442,7 +441,9 @@ mutable struct BufferOriginalSol
     original_primal_gradient::CuVector{Float64}
 end
 
-
+"""
+Compute the iteration stats of the unscaled primal and dual solutions
+"""
 function evaluate_unscaled_iteration_stats(
     scaled_problem::CuScaledQpProblem,
     qp_cache::CachedQuadraticProgramInfo,
@@ -500,7 +501,9 @@ function evaluate_unscaled_iteration_stats(
     )
 end
 
-# print functions are on CPU
+#############################
+# Below are print functions #
+#############################
 function print_to_screen_this_iteration(
     termination_reason::Union{TerminationReason,Bool},
     iteration::Int64,
@@ -630,7 +633,6 @@ function display_iteration_stats(
             lpad_float(
             stats.infeasibility_information[1].primal_ray_linear_objective,
             ),
-            # stats.infeasibility_information[1].primal_ray_quadratic_norm,
             stats.infeasibility_information[1].max_dual_ray_infeasibility,
             lpad_float(stats.infeasibility_information[1].dual_ray_objective)
         )

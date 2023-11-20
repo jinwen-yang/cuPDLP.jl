@@ -1,6 +1,6 @@
-
-# on CPU
-# Vector{ConvergenceInformation}, Vector{InfeasibilityInformation} on CPU
+#####################################################
+# solve_log.jl utilizes the code of FirstOrderLp.jl #
+#####################################################
 
 """
 RestartChoice specifies whether a restart was performed on a given iteration.

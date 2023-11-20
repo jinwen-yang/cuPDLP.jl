@@ -20,6 +20,9 @@ mutable struct CuScaledQpProblem
     variable_rescaling::CuVector{Float64}
 end
 
+"""
+Transfer quadratic program from CPU to GPU
+"""
 function qp_cpu_to_gpu(problem::QuadraticProgrammingProblem)
     num_constraints, num_variables = size(problem.constraint_matrix)
     isfinite_variable_lower_bound = Vector{Bool}(isfinite.(problem.variable_lower_bound))
@@ -58,6 +61,10 @@ function qp_cpu_to_gpu(problem::QuadraticProgrammingProblem)
     )
 end
 
+
+"""
+Transfer scaled QP from CPU to GPU
+"""
 function scaledqp_cpu_to_gpu(scaled_problem::ScaledQpProblem)
     d_constraint_rescaling = CuArray{Float64}(undef,length(scaled_problem.constraint_rescaling))
     d_variable_rescaling = CuArray{Float64}(undef,length(scaled_problem.variable_rescaling))
@@ -73,7 +80,9 @@ function scaledqp_cpu_to_gpu(scaled_problem::ScaledQpProblem)
     )
 end
 
-
+"""
+Transfer solutions from GPU to CPU
+"""
 function gpu_to_cpu!(
     d_primal_solution::CuVector{Float64},
     d_dual_solution::CuVector{Float64},

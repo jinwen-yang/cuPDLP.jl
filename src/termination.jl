@@ -1,7 +1,7 @@
+#######################################################
+# termination.jl utilizes the code of FirstOrderLp.jl #
+#######################################################
 
-### termination is checked on CPU
-### IterationStats on CPU
-### ConvergenceInformation on CPU
 
 @enum OptimalityNorm L_INF L2
 

@@ -50,8 +50,6 @@ function solve_instance_and_output(
         log.termination_string = output.termination_string
         log.iteration_count = output.iteration_count
         log.solve_time_sec = output.iteration_stats[end].cumulative_time_sec
-        # This assumes that the last iterate matches the solution returned by the
-        # solver.
         log.solution_stats = output.iteration_stats[end]
         log.solution_type = cuPDLP.POINT_TYPE_AVERAGE_ITERATE
     
@@ -112,7 +110,7 @@ function warm_up(lp::cuPDLP.QuadraticProgrammingProblem)
         40,
         termination_params_warmup,
         restart_params,
-        cuPDLP.AdaptiveStepsizeParams(0.3,0.6), # cuPDLP.ConstantStepsizeParams(), 
+        cuPDLP.AdaptiveStepsizeParams(0.3,0.6),
     )
 
     cuPDLP.optimize(params_warmup, lp);
@@ -146,9 +144,6 @@ function parse_command_line()
 
     return ArgParse.parse_args(arg_parse)
 end
-
-
-
 
 
 function main()
@@ -194,7 +189,7 @@ function main()
         40,
         termination_params,
         restart_params,
-        cuPDLP.AdaptiveStepsizeParams(0.3,0.6), # cuPDLP.ConstantStepsizeParams(), 
+        cuPDLP.AdaptiveStepsizeParams(0.3,0.6),  
     )
 
     solve_instance_and_output(
