@@ -4,6 +4,12 @@ This repository contains experimental code for solving linear programming using 
 
 Part of the code utilizes https://github.com/google-research/FirstOrderLp.jl which originally stated Apache-2.0 as its license.
 
+## Related paper
+
+The following paper describes the methods implemented in this repository:
+
+- [cuPDLP.jl: A GPU Implementation of Restarted Primal-Dual Hybrid Gradient for Linear Programming in Julia](https://arxiv.org/abs/2311.12180)
+
 ## Setup
 
 A one-time step is required to set up the necessary packages on the local machine:
