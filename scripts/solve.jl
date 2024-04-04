@@ -155,7 +155,10 @@ function main()
 
     lp = cuPDLP.qps_reader_to_standard_form(instance_path)
 
+    oldstd = stdout
+    redirect_stdout(devnull)
     warm_up(lp);
+    redirect_stdout(oldstd)
 
     restart_params = cuPDLP.construct_restart_parameters(
         cuPDLP.ADAPTIVE_KKT,    # NO_RESTARTS FIXED_FREQUENCY ADAPTIVE_KKT
