@@ -26,8 +26,6 @@ end
 mutable struct CuPdhgSolverState
     current_primal_solution::CuVector{Float64}
     current_dual_solution::CuVector{Float64}
-    delta_primal::CuVector{Float64}
-    delta_dual::CuVector{Float64}
     current_primal_product::CuVector{Float64}
     current_dual_product::CuVector{Float64}
     solution_weighted_avg::CuSolutionWeightedAverage 
@@ -42,13 +40,9 @@ end
 
 
 mutable struct CuBufferState
-    next_primal::CuVector{Float64}
-    next_dual::CuVector{Float64}
     delta_primal::CuVector{Float64}
     delta_dual::CuVector{Float64}
-    next_primal_product::CuVector{Float64}
-    next_dual_product::CuVector{Float64}
-    delta_dual_product::CuVector{Float64}
+    delta_primal_product::CuVector{Float64}
 end
 
 
@@ -189,13 +183,14 @@ function compute_next_primal_solution_kernel!(
     step_size::Float64,
     primal_weight::Float64,
     num_variables::Int64,
-    next_primal::CuDeviceVector{Float64},
+    delta_primal::CuDeviceVector{Float64},
 )
     tx = threadIdx().x + (blockDim().x * (blockIdx().x - 0x1))
     if tx <= num_variables
         @inbounds begin
-            next_primal[tx] = current_primal_solution[tx] - (step_size / primal_weight) * (objective_vector[tx] - current_dual_product[tx])
-            next_primal[tx] = min(variable_upper_bound[tx], max(variable_lower_bound[tx], next_primal[tx]))
+            delta_primal[tx] = current_primal_solution[tx] - (step_size / primal_weight) * (objective_vector[tx] - current_dual_product[tx])
+            delta_primal[tx] = min(variable_upper_bound[tx], max(variable_lower_bound[tx], delta_primal[tx]))
+            delta_primal[tx] -= current_primal_solution[tx]
         end
     end
     return 
@@ -210,8 +205,8 @@ function compute_next_primal_solution!(
     current_dual_product::CuVector{Float64},
     step_size::Float64,
     primal_weight::Float64,
-    next_primal::CuVector{Float64},
-    next_primal_product::CuVector{Float64},
+    delta_primal::CuVector{Float64},
+    delta_primal_product::CuVector{Float64},
 )
     NumBlockPrimal = ceil(Int64, problem.num_variables/ThreadPerBlock)
 
@@ -224,11 +219,10 @@ function compute_next_primal_solution!(
         step_size,
         primal_weight,
         problem.num_variables,
-        next_primal,
+        delta_primal,
     )
 
-    # next_primal_product .= problem.constraint_matrix * next_primal
-    CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix, next_primal, 0, next_primal_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
+    CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix, delta_primal, 0, delta_primal_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
     
 end
 
@@ -239,23 +233,27 @@ function compute_next_dual_solution_kernel!(
     right_hand_side::CuDeviceVector{Float64},
     current_dual_solution::CuDeviceVector{Float64},
     current_primal_product::CuDeviceVector{Float64},
-    next_primal_product::CuDeviceVector{Float64},
+    delta_primal_product::CuDeviceVector{Float64},
     step_size::Float64,
     primal_weight::Float64,
     extrapolation_coefficient::Float64,
     num_equalities::Int64,
     num_constraints::Int64,
-    next_dual::CuDeviceVector{Float64},
+    delta_dual::CuDeviceVector{Float64},
 )
     tx = threadIdx().x + (blockDim().x * (blockIdx().x - 0x1))
     if tx <= num_equalities
         @inbounds begin
-            next_dual[tx] = current_dual_solution[tx] + (primal_weight * step_size) * (right_hand_side[tx] - next_primal_product[tx] - extrapolation_coefficient * (next_primal_product[tx] - current_primal_product[tx]))
+            delta_dual[tx] = current_dual_solution[tx] + (primal_weight * step_size) * (right_hand_side[tx] - (1 + extrapolation_coefficient) * delta_primal_product[tx] - extrapolation_coefficient * current_primal_product[tx])
+
+            delta_dual[tx] -= current_dual_solution[tx]
         end
     elseif num_equalities + 1 <= tx <= num_constraints
         @inbounds begin
-            next_dual[tx] = current_dual_solution[tx] + (primal_weight * step_size) * (right_hand_side[tx] - next_primal_product[tx] - extrapolation_coefficient * (next_primal_product[tx] - current_primal_product[tx]))
-            next_dual[tx] = max(next_dual[tx], 0.0)
+            delta_dual[tx] = current_dual_solution[tx] + (primal_weight * step_size) * (right_hand_side[tx] - (1 + extrapolation_coefficient) * delta_primal_product[tx] - extrapolation_coefficient * current_primal_product[tx])
+            delta_dual[tx] = max(delta_dual[tx], 0.0)
+
+            delta_dual[tx] -= current_dual_solution[tx]
         end
     end
     return 
@@ -269,10 +267,9 @@ function compute_next_dual_solution!(
     current_dual_solution::CuVector{Float64},
     step_size::Float64,
     primal_weight::Float64,
-    next_primal_product::CuVector{Float64},
+    delta_primal_product::CuVector{Float64},
     current_primal_product::CuVector{Float64},
-    next_dual::CuVector{Float64},
-    next_dual_product::CuVector{Float64};
+    delta_dual::CuVector{Float64},
     extrapolation_coefficient::Float64 = 1.0,
 )
     NumBlockDual = ceil(Int64, problem.num_constraints/ThreadPerBlock)
@@ -281,34 +278,34 @@ function compute_next_dual_solution!(
         problem.right_hand_side,
         current_dual_solution,
         current_primal_product,
-        next_primal_product,
+        delta_primal_product,
         step_size,
         primal_weight,
         extrapolation_coefficient,
         problem.num_equalities,
         problem.num_constraints,
-        next_dual,
+        delta_dual,
     )
 
     # next_dual_product .= problem.constraint_matrix_t * next_dual
-    CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix_t, next_dual, 0, next_dual_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
+    # CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix_t, next_dual, 0, next_dual_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
 end
 
 """
 Update primal and dual solutions
 """
 function update_solution_in_solver_state!(
+    problem::CuLinearProgrammingProblem,
     solver_state::CuPdhgSolverState,
     buffer_state::CuBufferState,
 )
-    solver_state.delta_primal .= buffer_state.next_primal .- solver_state.current_primal_solution
-    solver_state.delta_dual .= buffer_state.next_dual .- solver_state.current_dual_solution
-    # solver_state.delta_dual_product .= buffer_state.next_dual_product .- solver_state.current_dual_product
-    solver_state.current_primal_solution .= copy(buffer_state.next_primal)
-    solver_state.current_dual_solution .= copy(buffer_state.next_dual)
-    solver_state.current_dual_product .= copy(buffer_state.next_dual_product)
-    solver_state.current_primal_product .= copy(buffer_state.next_primal_product)
+    # solver_state.current_primal_solution .= copy(buffer_state.next_primal)
+    solver_state.current_primal_solution .+= buffer_state.delta_primal
+    solver_state.current_primal_product .+= buffer_state.delta_primal_product
 
+    solver_state.current_dual_solution .+= buffer_state.delta_dual
+    CUDA.CUSPARSE.mv!('N', 1, problem.constraint_matrix_t, solver_state.current_dual_solution, 0, solver_state.current_dual_product, 'O', CUDA.CUSPARSE.CUSPARSE_SPMV_CSR_ALG2)
+    
     weight = solver_state.step_size
     
     add_to_solution_weighted_average!(
@@ -329,11 +326,7 @@ function compute_interaction_and_movement(
     problem::CuLinearProgrammingProblem,
     buffer_state::CuBufferState,
 )
-    buffer_state.delta_primal .= buffer_state.next_primal .- solver_state.current_primal_solution
-    buffer_state.delta_dual .= buffer_state.next_dual .- solver_state.current_dual_solution
-    buffer_state.delta_dual_product .= buffer_state.next_dual_product .- solver_state.current_dual_product
-    
-    primal_dual_interaction = CUDA.dot(buffer_state.delta_primal, buffer_state.delta_dual_product) 
+    primal_dual_interaction = CUDA.dot(buffer_state.delta_primal_product, buffer_state.delta_dual) 
     interaction = abs(primal_dual_interaction) 
 
     norm_delta_primal = CUDA.norm(buffer_state.delta_primal)
@@ -365,8 +358,8 @@ function take_step!(
             solver_state.current_dual_product,
             step_size,
             solver_state.primal_weight,
-            buffer_state.next_primal,
-            buffer_state.next_primal_product,
+            buffer_state.delta_primal,
+            buffer_state.delta_primal_product,
         )
 
         compute_next_dual_solution!(
@@ -374,10 +367,9 @@ function take_step!(
             solver_state.current_dual_solution,
             step_size,
             solver_state.primal_weight,
-            buffer_state.next_primal_product,
+            buffer_state.delta_primal_product,
             solver_state.current_primal_product,
-            buffer_state.next_dual,
-            buffer_state.next_dual_product,
+            buffer_state.delta_dual,
         )
 
 
@@ -402,6 +394,7 @@ function take_step!(
 
         if step_size <= step_size_limit
             update_solution_in_solver_state!(
+                problem,
                 solver_state, 
                 buffer_state,
             )
@@ -434,8 +427,8 @@ function take_step!(
         solver_state.current_dual_product,
         solver_state.step_size,
         solver_state.primal_weight,
-        buffer_state.next_primal,
-        buffer_state.next_primal_product,
+        buffer_state.delta_primal,
+        buffer_state.delta_primal_product,
     )
     
 
@@ -444,15 +437,15 @@ function take_step!(
         solver_state.current_dual_solution,
         solver_state.step_size,
         solver_state.primal_weight,
-        buffer_state.next_primal_product,
+        buffer_state.delta_primal_product,
         solver_state.current_primal_product,
-        buffer_state.next_dual,
-        buffer_state.next_dual_product,
+        buffer_state.delta_dual,
     )
 
     solver_state.cumulative_kkt_passes += 1
 
     update_solution_in_solver_state!(
+        problem,
         solver_state, 
         buffer_state,
     )
@@ -467,12 +460,19 @@ function optimize(
 )
     validate(original_problem)
     qp_cache = cached_quadratic_program_info(original_problem)
+
+    start_rescaling_time = time()
     scaled_problem = rescale_problem(
         params.l_inf_ruiz_iterations,
         params.l2_norm_rescaling,
         params.pock_chambolle_alpha,
         params.verbosity,
         original_problem,
+    )
+    rescaling_time = time() - start_rescaling_time
+    Printf.@printf(
+        "Preconditioning Time (seconds): %.2e\n",
+        rescaling_time,
     )
 
     primal_size = length(scaled_problem.scaled_qp.variable_lower_bound)
@@ -492,8 +492,6 @@ function optimize(
     solver_state = CuPdhgSolverState(
         CUDA.zeros(Float64, primal_size),    # current_primal_solution
         CUDA.zeros(Float64, dual_size),      # current_dual_solution
-        CUDA.zeros(Float64, primal_size),    # delta_primal
-        CUDA.zeros(Float64, dual_size),      # delta_dual
         CUDA.zeros(Float64, dual_size),      # current_primal_product
         CUDA.zeros(Float64, primal_size),    # current_dual_product
         initialize_solution_weighted_average(primal_size, dual_size),
@@ -507,13 +505,9 @@ function optimize(
     )
 
     buffer_state = CuBufferState(
-        CUDA.zeros(Float64, primal_size),      # next_primal
-        CUDA.zeros(Float64, dual_size),        # next_dual
         CUDA.zeros(Float64, primal_size),      # delta_primal
         CUDA.zeros(Float64, dual_size),        # delta_dual
-        CUDA.zeros(Float64, dual_size),        # next_primal_product
-        CUDA.zeros(Float64, primal_size),      # next_dual_product
-        CUDA.zeros(Float64, primal_size),      # delta_dual_product
+        CUDA.zeros(Float64, dual_size),        # delta_primal_product
     )
 
     buffer_avg = CuBufferAvgState(
@@ -531,10 +525,10 @@ function optimize(
     )
 
     buffer_kkt = BufferKKTState(
-        CUDA.zeros(Float64, primal_size),      # primal
-        CUDA.zeros(Float64, dual_size),        # dual
-        CUDA.zeros(Float64, dual_size),        # primal_product
-        CUDA.zeros(Float64, primal_size),      # primal_gradient
+        buffer_original.original_primal_solution,      # primal
+        buffer_original.original_dual_solution,        # dual
+        buffer_original.original_primal_product,        # primal_product
+        buffer_original.original_primal_gradient,      # primal_gradient
         CUDA.zeros(Float64, primal_size),      # lower_variable_violation
         CUDA.zeros(Float64, primal_size),      # upper_variable_violation
         CUDA.zeros(Float64, dual_size),        # constraint_violation
@@ -549,10 +543,10 @@ function optimize(
     )
     
     buffer_kkt_infeas = BufferKKTState(
-        CUDA.zeros(Float64, primal_size),      # primal
-        CUDA.zeros(Float64, dual_size),        # dual
-        CUDA.zeros(Float64, dual_size),        # primal_product
-        CUDA.zeros(Float64, primal_size),      # primal_gradient
+        buffer_original.original_primal_solution,      # primal
+        buffer_original.original_dual_solution,        # dual
+        buffer_original.original_primal_product,        # primal_product
+        buffer_original.original_primal_gradient,      # primal_gradient
         CUDA.zeros(Float64, primal_size),      # lower_variable_violation
         CUDA.zeros(Float64, primal_size),      # upper_variable_violation
         CUDA.zeros(Float64, dual_size),        # constraint_violation
@@ -637,10 +631,10 @@ function optimize(
 
             ### average ###
             if solver_state.numerical_error || solver_state.solution_weighted_avg.sum_primal_solutions_count == 0 || solver_state.solution_weighted_avg.sum_dual_solutions_count == 0
-                buffer_avg.avg_primal_solution .= copy(solver_state.current_primal_solution)
-                buffer_avg.avg_dual_solution .= copy(solver_state.current_dual_solution)
-                buffer_avg.avg_primal_product .= copy(solver_state.current_primal_product)
-                buffer_avg.avg_primal_gradient .= copy(buffer_primal_gradient) 
+                buffer_avg.avg_primal_solution .= solver_state.current_primal_solution
+                buffer_avg.avg_dual_solution .= solver_state.current_dual_solution
+                buffer_avg.avg_primal_product .= solver_state.current_primal_product
+                buffer_avg.avg_primal_gradient .= buffer_primal_gradient
             else
                 compute_average!(solver_state.solution_weighted_avg, buffer_avg, d_problem)
             end
@@ -687,6 +681,10 @@ function optimize(
             )
             if solver_state.numerical_error && termination_reason == false
                 termination_reason = TERMINATION_REASON_NUMERICAL_ERROR
+            end
+
+            if iteration < 10 && (termination_reason == TERMINATION_REASON_PRIMAL_INFEASIBLE || termination_reason == TERMINATION_REASON_DUAL_INFEASIBLE)
+                termination_reason = false
             end
 
             # If we're terminating, record the iteration stats to provide final

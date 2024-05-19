@@ -259,10 +259,10 @@ function compute_weight_kkt_residual(
     dual_norm_params::Float64, 
 )
     ## construct buffer_kkt
-    buffer_kkt.primal_solution .= copy(primal_iterate)
-    buffer_kkt.dual_solution .= copy(dual_iterate)
-    buffer_kkt.primal_product .= copy(primal_product)
-    buffer_kkt.primal_gradient .= copy(primal_gradient)
+    buffer_kkt.primal_solution = primal_iterate
+    buffer_kkt.dual_solution = dual_iterate
+    buffer_kkt.primal_product = primal_product
+    buffer_kkt.primal_gradient = primal_gradient
 
     compute_primal_residual!(problem, buffer_kkt)
     primal_objective = primal_obj(problem, buffer_kkt.primal_solution)
@@ -576,11 +576,11 @@ function run_restart_scheme(
             if verbosity >= 4
                 print("  Restarted to average")
             end
-            current_primal_solution .= copy(buffer_avg.avg_primal_solution)
-            current_dual_solution .= copy(buffer_avg.avg_dual_solution)
-            primal_product .= copy(buffer_avg.avg_primal_product)
+            current_primal_solution .= buffer_avg.avg_primal_solution
+            current_dual_solution .= buffer_avg.avg_dual_solution
+            primal_product .= buffer_avg.avg_primal_product
             dual_product .= problem.objective_vector .- buffer_avg.avg_primal_gradient
-            buffer_primal_gradient .= copy(buffer_avg.avg_primal_gradient)
+            buffer_primal_gradient .= buffer_avg.avg_primal_gradient
         else
         # Current point is much better than average point.
             if verbosity >= 4
@@ -680,14 +680,14 @@ function update_last_restart_info!(
             avg_dual_solution - last_restart_info.dual_solution,
             dual_norm_params,
         ) * sqrt(primal_weight)
-    last_restart_info.primal_solution .= copy(current_primal_solution)
-    last_restart_info.dual_solution .= copy(current_dual_solution)
+    last_restart_info.primal_solution .= current_primal_solution
+    last_restart_info.dual_solution .= current_dual_solution
 
     last_restart_info.last_restart_length = restart_length
     last_restart_info.last_restart_kkt_residual = candidate_kkt_residual
 
-    last_restart_info.primal_product .= copy(primal_product)
-    last_restart_info.primal_gradient .= copy(primal_gradient)
+    last_restart_info.primal_product .= primal_product
+    last_restart_info.primal_gradient .= primal_gradient
 
 end
 

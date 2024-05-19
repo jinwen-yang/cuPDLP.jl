@@ -261,10 +261,10 @@ function compute_convergence_information(
 )
     
     ## construct buffer_kkt
-    buffer_kkt.primal_solution .= copy(primal_iterate)
-    buffer_kkt.dual_solution .= copy(dual_iterate)
-    buffer_kkt.primal_product .= copy(primal_product)
-    buffer_kkt.primal_gradient .= copy(primal_gradient)
+    buffer_kkt.primal_solution = primal_iterate
+    buffer_kkt.dual_solution = dual_iterate
+    buffer_kkt.primal_product = primal_product
+    buffer_kkt.primal_gradient = primal_gradient
     
 
     convergence_info = ConvergenceInformation()
@@ -329,8 +329,8 @@ function compute_infeasibility_information(
         primal_ray_estimate_product /= primal_ray_inf_norm
     end
 
-    buffer_kkt_infeas.primal_solution .= copy(primal_ray_estimate)
-    buffer_kkt_infeas.primal_product .= copy(primal_ray_estimate_product)
+    buffer_kkt_infeas.primal_solution = primal_ray_estimate
+    buffer_kkt_infeas.primal_product = primal_ray_estimate_product
 
     buffer_lp.variable_lower_bound .= -1 ./ problem.isfinite_variable_lower_bound .+ 1
     buffer_lp.variable_upper_bound .= 1 ./ problem.isfinite_variable_upper_bound .- 1
@@ -348,7 +348,7 @@ function compute_infeasibility_information(
     buffer_lp.objective_vector .= 0.0
     buffer_lp.right_hand_side .= copy(problem.right_hand_side)
 
-    buffer_kkt_infeas.dual_solution .= copy(dual_ray_estimate)
+    buffer_kkt_infeas.dual_solution = dual_ray_estimate
     buffer_kkt_infeas.primal_gradient .= primal_ray_estimate_gradient .- problem.objective_vector
 
     compute_dual_stats!(buffer_lp, buffer_kkt_infeas)

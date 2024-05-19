@@ -95,7 +95,7 @@ function warm_up(lp::cuPDLP.QuadraticProgrammingProblem)
         eps_primal_infeasible = 1.0e-8,
         eps_dual_infeasible = 1.0e-8,
         time_sec_limit = Inf,
-        iteration_limit = 10,
+        iteration_limit = 100,
         kkt_matrix_pass_limit = Inf,
     )
 
@@ -107,7 +107,7 @@ function warm_up(lp::cuPDLP.QuadraticProgrammingProblem)
         true,
         0,
         true,
-        40,
+        64,
         termination_params_warmup,
         restart_params,
         cuPDLP.AdaptiveStepsizeParams(0.3,0.6),
@@ -189,7 +189,7 @@ function main()
         true,
         2,
         true,
-        40,
+        64,
         termination_params,
         restart_params,
         cuPDLP.AdaptiveStepsizeParams(0.3,0.6),  
