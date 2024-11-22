@@ -12,6 +12,15 @@ A one-time step is required to set up the necessary packages on the local machin
 $ julia --project -e 'import Pkg; Pkg.instantiate()'
 ```
 
+## Use with JuMP
+
+To use cuPDLP with JuMP, use `cuPDLP.Optimizer`:
+
+```julia
+using JuMP, cuPDLP
+model = Model(cuPDLP.Optimizer)
+```
+
 ## Running 
 
 `solve.jl` is the recommended script for using cuPDLP. The results are written to JSON and text files. All commands below assume that the current directory is the working directory.
