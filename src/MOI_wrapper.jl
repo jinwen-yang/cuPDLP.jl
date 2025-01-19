@@ -182,12 +182,12 @@ function MOI.optimize!(dest::Optimizer, src::OptimizerCache)
         spzeros(A.n, A.n),
     )
     dest.output = optimize(dest.parameters, transform_to_standard_form(problem))
-    return MOI.Utilities.identity_index_map(src)
+    return MOI.Utilities.identity_index_map(src), false
 end
 
 function MOI.optimize!(dest::Optimizer, src::MOI.ModelLike)
     cache = OptimizerCache()
     index_map = MOI.copy_to(cache, src)
     MOI.optimize!(dest, cache)
-    return index_map
+    return index_map, false
 end
