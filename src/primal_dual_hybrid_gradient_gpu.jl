@@ -6,7 +6,7 @@ end
 
 struct ConstantStepsizeParams end
 
-struct PdhgParameters
+mutable struct PdhgParameters
     l_inf_ruiz_iterations::Int
     l2_norm_rescaling::Bool
     pock_chambolle_alpha::Union{Float64,Nothing}
