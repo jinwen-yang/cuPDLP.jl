@@ -191,3 +191,110 @@ function MOI.optimize!(dest::Optimizer, src::MOI.ModelLike)
     MOI.optimize!(dest, cache)
     return index_map, false
 end
+
+function MOI.get(optimizer::Optimizer, ::MOI.SolveTimeSec)
+    return optimizer.output.iteration_status[end].cumulative_time_sec
+end
+
+function MOI.get(optimizer::Optimizer, ::MOI.RawStatusString)
+    if isnothing(optimizer.output)
+        return "Optimize not called"
+    else
+        return string(optimizer.output.termination_reason) * " : " * optimizer.output.termination_string
+    end
+end
+
+const _TERMINATION_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.OPTIMIZE_NOT_CALLED,
+    TERMINATION_REASON_OPTIMAL => MOI.OPTIMAL,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.INFEASIBLE,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.DUAL_INFEASIBLE,
+    TERMINATION_REASON_TIME_LIMIT => MOI.TIME_LIMIT,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.ITERATION_LIMIT,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.NUMERICAL_ERROR,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.NUMERICAL_ERROR,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.INVALID_MODEL,
+    TERMINATION_REASON_OTHER => MOI.OTHER_ERROR,
+)
+
+# Implements getter for result value and statuses
+function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
+    return isnothing(optimizer.output) ? MOI.OPTIMIZE_NOT_CALLED :
+           _TERMINATION_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(optimizer::Optimizer, attr::MOI.ObjectiveValue)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.iteration_stats[end].convergence_information.primal_objective
+end
+
+function MOI.get(optimizer::Optimizer, attr::MOI.DualObjectiveValue)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.iteration_stats[end].convergence_information.dual_objective
+end
+
+const _PRIMAL_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.NO_SOLUTION,
+    TERMINATION_REASON_OPTIMAL => MOI.FEASIBLE_POINT,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.NO_SOLUTION,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.INFEASIBILITY_CERTIFICATE,
+    TERMINATION_REASON_TIME_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_OTHER => MOI.UNKNOWN_RESULT_STATUS,
+)
+
+function MOI.get(optimizer::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index > MOI.get(optimizer, MOI.ResultCount())
+        return MOI.NO_SOLUTION
+    end
+    return _PRIMAL_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.VariablePrimal,
+    vi::MOI.VariableIndex,
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.primal_solution[vi.value]
+end
+
+const _DUAL_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.NO_SOLUTION,
+    TERMINATION_REASON_OPTIMAL => MOI.FEASIBLE_POINT,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.INFEASIBILITY_CERTIFICATE,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.NO_SOLUTION,
+    TERMINATION_REASON_TIME_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_OTHER => MOI.UNKNOWN_RESULT_STATUS,
+)
+
+function MOI.get(optimizer::Optimizer, attr::MOI.DualStatus)
+    if attr.result_index > MOI.get(optimizer, MOI.ResultCount())
+        return MOI.NO_SOLUTION
+    end
+    return _DUAL_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex,
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.dual_solution[ci.value]
+end
+
+function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
+    if isnothing(optimizer.output)
+        return 0
+    else
+        return 1
+    end
+end
