@@ -4,9 +4,7 @@ import MathOptInterface as MOI
 MOI.Utilities.@product_of_sets(
     _LPProductOfSets,
     MOI.EqualTo{T},
-    MOI.LessThan{T},
     MOI.GreaterThan{T},
-    MOI.Interval{T},
 )
 
 const OptimizerCache = MOI.Utilities.GenericModel{
@@ -36,11 +34,16 @@ const DEFAULT_OPTIONS = Dict{String,Any}(
 
 Base.show(io::IO, ::Type{OptimizerCache}) = print(io, "cuPDLP.OptimizerCache")
 
-const SCALAR_SETS = Union{
+const BOUND_SETS = Union{
     MOI.GreaterThan{Float64},
     MOI.LessThan{Float64},
     MOI.EqualTo{Float64},
     MOI.Interval{Float64},
+}
+
+const ROW_SETS = Union{
+    MOI.EqualTo{Float64},
+    MOI.GreaterThan{Float64},
 }
 
 """
@@ -51,6 +54,7 @@ Create a new cuPDLP optimizer.
 mutable struct Optimizer <: MOI.AbstractOptimizer
     output::Union{Nothing,SaddlePointOutput}
     max_sense::Bool
+    num_equalities::Int
     silent::Bool
     parameters::PdhgParameters
 
@@ -58,6 +62,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
         return new(
             nothing,
             false,
+	    0,
             false,
             PdhgParameters(
                 10,
@@ -141,11 +146,20 @@ MOI.get(optimizer::Optimizer, ::MOI.Silent) = optimizer.silent
 
 function MOI.supports_constraint(
     ::Optimizer,
-    ::Type{<:Union{MOI.VariableIndex,MOI.ScalarAffineFunction{Float64}}},
-    ::Type{<:SCALAR_SETS},
+    ::Type{MOI.VariableIndex},
+    ::Type{<:BOUND_SETS},
 )
     return true
 end
+
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{MOI.ScalarAffineFunction{Float64}},
+    ::Type{<:ROW_SETS},
+)
+    return true
+end
+
 
 MOI.supports(::Optimizer, ::MOI.ObjectiveSense) = true
 
@@ -160,6 +174,10 @@ end
 #   Optimize and post-optimize
 # ===============================
 
+function _flip_sense(optimizer::Optimizer, obj)
+    return optimizer.max_sense ? -obj : obj
+end
+
 function MOI.optimize!(dest::Optimizer, src::OptimizerCache)
     MOI.empty!(dest)
     Ab = src.constraints
@@ -171,17 +189,25 @@ function MOI.optimize!(dest::Optimizer, src::OptimizerCache)
     for term in obj.terms
         c[term.variable.value] += term.coefficient
     end
-    problem = TwoSidedQpProblem(
+    dest.num_equalities = MOI.get(src, MOI.NumberOfConstraints{MOI.ScalarAffineFunction{Float64},MOI.EqualTo{Float64}}())
+    problem = QuadraticProgrammingProblem(
         src.variables.lower,
         src.variables.upper,
-        row_bounds.lower,
-        row_bounds.upper,
-        A,
-        MOI.constant(obj),
-        dest.max_sense ? -c : c,
         spzeros(A.n, A.n),
+        _flip_sense(dest, c),
+        _flip_sense(dest, MOI.constant(obj)),
+        A,
+        row_bounds.lower,
+	dest.num_equalities,
     )
-    dest.output = optimize(dest.parameters, transform_to_standard_form(problem))
+    if dest.silent
+        verbosity = dest.parameters.verbosity
+        dest.parameters.verbosity = 0
+    end
+    dest.output = optimize(dest.parameters, problem)
+    if dest.silent # restore it
+        dest.parameters.verbosity = verbosity
+    end
     return MOI.Utilities.identity_index_map(src), false
 end
 
@@ -225,12 +251,12 @@ end
 
 function MOI.get(optimizer::Optimizer, attr::MOI.ObjectiveValue)
     MOI.check_result_index_bounds(optimizer, attr)
-    return optimizer.output.iteration_stats[end].convergence_information.primal_objective
+    return _flip_sense(optimizer, optimizer.output.iteration_stats[end].convergence_information[].primal_objective)
 end
 
 function MOI.get(optimizer::Optimizer, attr::MOI.DualObjectiveValue)
     MOI.check_result_index_bounds(optimizer, attr)
-    return optimizer.output.iteration_stats[end].convergence_information.dual_objective
+    return _flip_sense(optimizer, optimizer.output.iteration_stats[end].convergence_information[].dual_objective)
 end
 
 const _PRIMAL_STATUS_MAP = Dict(
@@ -285,10 +311,19 @@ end
 function MOI.get(
     optimizer::Optimizer,
     attr::MOI.ConstraintDual,
-    ci::MOI.ConstraintIndex,
+    ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{Float64},MOI.EqualTo{Float64}},
 )
     MOI.check_result_index_bounds(optimizer, attr)
     return optimizer.output.dual_solution[ci.value]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{Float64},MOI.GreaterThan{Float64}},
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.dual_solution[optimizer.num_equalities + ci.value]
 end
 
 function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
