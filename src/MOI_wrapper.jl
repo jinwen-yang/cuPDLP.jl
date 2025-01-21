@@ -23,15 +23,6 @@ const OptimizerCache = MOI.Utilities.GenericModel{
     },
 }
 
-const DEFAULT_OPTIONS = Dict{String,Any}(
-    "max_iters" => 100,
-    "ϵ_primal" => 1e-4,
-    "ϵ_dual" => 1e-4,
-    "ϵ_gap" => 1e-4,
-    "ϵ_unbounded" => 1e-7,
-    "ϵ_infeasible" => 1e-7,
-)
-
 Base.show(io::IO, ::Type{OptimizerCache}) = print(io, "cuPDLP.OptimizerCache")
 
 const BOUND_SETS = Union{
