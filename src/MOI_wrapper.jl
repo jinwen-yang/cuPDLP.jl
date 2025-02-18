@@ -4,9 +4,7 @@ import MathOptInterface as MOI
 MOI.Utilities.@product_of_sets(
     _LPProductOfSets,
     MOI.EqualTo{T},
-    MOI.LessThan{T},
     MOI.GreaterThan{T},
-    MOI.Interval{T},
 )
 
 const OptimizerCache = MOI.Utilities.GenericModel{
@@ -25,22 +23,18 @@ const OptimizerCache = MOI.Utilities.GenericModel{
     },
 }
 
-const DEFAULT_OPTIONS = Dict{String,Any}(
-    "max_iters" => 100,
-    "ϵ_primal" => 1e-4,
-    "ϵ_dual" => 1e-4,
-    "ϵ_gap" => 1e-4,
-    "ϵ_unbounded" => 1e-7,
-    "ϵ_infeasible" => 1e-7,
-)
-
 Base.show(io::IO, ::Type{OptimizerCache}) = print(io, "cuPDLP.OptimizerCache")
 
-const SCALAR_SETS = Union{
+const BOUND_SETS = Union{
     MOI.GreaterThan{Float64},
     MOI.LessThan{Float64},
     MOI.EqualTo{Float64},
     MOI.Interval{Float64},
+}
+
+const ROW_SETS = Union{
+    MOI.EqualTo{Float64},
+    MOI.GreaterThan{Float64},
 }
 
 """
@@ -51,6 +45,7 @@ Create a new cuPDLP optimizer.
 mutable struct Optimizer <: MOI.AbstractOptimizer
     output::Union{Nothing,SaddlePointOutput}
     max_sense::Bool
+    num_equalities::Int
     silent::Bool
     parameters::PdhgParameters
 
@@ -58,6 +53,7 @@ mutable struct Optimizer <: MOI.AbstractOptimizer
         return new(
             nothing,
             false,
+	    0,
             false,
             PdhgParameters(
                 10,
@@ -141,11 +137,20 @@ MOI.get(optimizer::Optimizer, ::MOI.Silent) = optimizer.silent
 
 function MOI.supports_constraint(
     ::Optimizer,
-    ::Type{<:Union{MOI.VariableIndex,MOI.ScalarAffineFunction{Float64}}},
-    ::Type{<:SCALAR_SETS},
+    ::Type{MOI.VariableIndex},
+    ::Type{<:BOUND_SETS},
 )
     return true
 end
+
+function MOI.supports_constraint(
+    ::Optimizer,
+    ::Type{MOI.ScalarAffineFunction{Float64}},
+    ::Type{<:ROW_SETS},
+)
+    return true
+end
+
 
 MOI.supports(::Optimizer, ::MOI.ObjectiveSense) = true
 
@@ -160,6 +165,10 @@ end
 #   Optimize and post-optimize
 # ===============================
 
+function _flip_sense(optimizer::Optimizer, obj)
+    return optimizer.max_sense ? -obj : obj
+end
+
 function MOI.optimize!(dest::Optimizer, src::OptimizerCache)
     MOI.empty!(dest)
     Ab = src.constraints
@@ -171,23 +180,147 @@ function MOI.optimize!(dest::Optimizer, src::OptimizerCache)
     for term in obj.terms
         c[term.variable.value] += term.coefficient
     end
-    problem = TwoSidedQpProblem(
+    dest.num_equalities = MOI.get(src, MOI.NumberOfConstraints{MOI.ScalarAffineFunction{Float64},MOI.EqualTo{Float64}}())
+    problem = QuadraticProgrammingProblem(
         src.variables.lower,
         src.variables.upper,
-        row_bounds.lower,
-        row_bounds.upper,
-        A,
-        MOI.constant(obj),
-        dest.max_sense ? -c : c,
         spzeros(A.n, A.n),
+        _flip_sense(dest, c),
+        _flip_sense(dest, MOI.constant(obj)),
+        A,
+        row_bounds.lower,
+	dest.num_equalities,
     )
-    dest.output = optimize(dest.parameters, transform_to_standard_form(problem))
-    return MOI.Utilities.identity_index_map(src)
+    if dest.silent
+        verbosity = dest.parameters.verbosity
+        dest.parameters.verbosity = 0
+    end
+    dest.output = optimize(dest.parameters, problem)
+    if dest.silent # restore it
+        dest.parameters.verbosity = verbosity
+    end
+    return MOI.Utilities.identity_index_map(src), false
 end
 
 function MOI.optimize!(dest::Optimizer, src::MOI.ModelLike)
     cache = OptimizerCache()
     index_map = MOI.copy_to(cache, src)
     MOI.optimize!(dest, cache)
-    return index_map
+    return index_map, false
+end
+
+function MOI.get(optimizer::Optimizer, ::MOI.SolveTimeSec)
+    return optimizer.output.iteration_status[end].cumulative_time_sec
+end
+
+function MOI.get(optimizer::Optimizer, ::MOI.RawStatusString)
+    if isnothing(optimizer.output)
+        return "Optimize not called"
+    else
+        return string(optimizer.output.termination_reason) * " : " * optimizer.output.termination_string
+    end
+end
+
+const _TERMINATION_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.OPTIMIZE_NOT_CALLED,
+    TERMINATION_REASON_OPTIMAL => MOI.OPTIMAL,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.INFEASIBLE,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.DUAL_INFEASIBLE,
+    TERMINATION_REASON_TIME_LIMIT => MOI.TIME_LIMIT,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.ITERATION_LIMIT,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.NUMERICAL_ERROR,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.NUMERICAL_ERROR,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.INVALID_MODEL,
+    TERMINATION_REASON_OTHER => MOI.OTHER_ERROR,
+)
+
+# Implements getter for result value and statuses
+function MOI.get(optimizer::Optimizer, ::MOI.TerminationStatus)
+    return isnothing(optimizer.output) ? MOI.OPTIMIZE_NOT_CALLED :
+           _TERMINATION_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(optimizer::Optimizer, attr::MOI.ObjectiveValue)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return _flip_sense(optimizer, optimizer.output.iteration_stats[end].convergence_information[].primal_objective)
+end
+
+function MOI.get(optimizer::Optimizer, attr::MOI.DualObjectiveValue)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return _flip_sense(optimizer, optimizer.output.iteration_stats[end].convergence_information[].dual_objective)
+end
+
+const _PRIMAL_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.NO_SOLUTION,
+    TERMINATION_REASON_OPTIMAL => MOI.FEASIBLE_POINT,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.NO_SOLUTION,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.INFEASIBILITY_CERTIFICATE,
+    TERMINATION_REASON_TIME_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_OTHER => MOI.UNKNOWN_RESULT_STATUS,
+)
+
+function MOI.get(optimizer::Optimizer, attr::MOI.PrimalStatus)
+    if attr.result_index > MOI.get(optimizer, MOI.ResultCount())
+        return MOI.NO_SOLUTION
+    end
+    return _PRIMAL_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.VariablePrimal,
+    vi::MOI.VariableIndex,
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.primal_solution[vi.value]
+end
+
+const _DUAL_STATUS_MAP = Dict(
+    TERMINATION_REASON_UNSPECIFIED => MOI.NO_SOLUTION,
+    TERMINATION_REASON_OPTIMAL => MOI.FEASIBLE_POINT,
+    TERMINATION_REASON_PRIMAL_INFEASIBLE => MOI.INFEASIBILITY_CERTIFICATE,
+    TERMINATION_REASON_DUAL_INFEASIBLE => MOI.NO_SOLUTION,
+    TERMINATION_REASON_TIME_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_ITERATION_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_KKT_MATRIX_PASS_LIMIT => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_NUMERICAL_ERROR => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_INVALID_PROBLEM => MOI.UNKNOWN_RESULT_STATUS,
+    TERMINATION_REASON_OTHER => MOI.UNKNOWN_RESULT_STATUS,
+)
+
+function MOI.get(optimizer::Optimizer, attr::MOI.DualStatus)
+    if attr.result_index > MOI.get(optimizer, MOI.ResultCount())
+        return MOI.NO_SOLUTION
+    end
+    return _DUAL_STATUS_MAP[optimizer.output.termination_reason]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{Float64},MOI.EqualTo{Float64}},
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.dual_solution[ci.value]
+end
+
+function MOI.get(
+    optimizer::Optimizer,
+    attr::MOI.ConstraintDual,
+    ci::MOI.ConstraintIndex{MOI.ScalarAffineFunction{Float64},MOI.GreaterThan{Float64}},
+)
+    MOI.check_result_index_bounds(optimizer, attr)
+    return optimizer.output.dual_solution[optimizer.num_equalities + ci.value]
+end
+
+function MOI.get(optimizer::Optimizer, ::MOI.ResultCount)
+    if isnothing(optimizer.output)
+        return 0
+    else
+        return 1
+    end
 end

@@ -6,7 +6,7 @@ end
 
 struct ConstantStepsizeParams end
 
-struct PdhgParameters
+mutable struct PdhgParameters
     l_inf_ruiz_iterations::Int
     l2_norm_rescaling::Bool
     pock_chambolle_alpha::Union{Float64,Nothing}
@@ -470,10 +470,12 @@ function optimize(
         original_problem,
     )
     rescaling_time = time() - start_rescaling_time
-    Printf.@printf(
-        "Preconditioning Time (seconds): %.2e\n",
-        rescaling_time,
-    )
+    if params.verbosity >= 1
+        Printf.@printf(
+            "Preconditioning Time (seconds): %.2e\n",
+            rescaling_time,
+        )
+    end
 
     primal_size = length(scaled_problem.scaled_qp.variable_lower_bound)
     dual_size = length(scaled_problem.scaled_qp.right_hand_side)
